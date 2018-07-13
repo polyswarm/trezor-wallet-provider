@@ -9,16 +9,16 @@ var bippath = require('bip32-path')
 var debug = false;
 
 function normalize(hex) {
-	if (hex == null) {
-		return null;
-	}
-	if (hex.startsWith("0x")) {
-		hex = hex.substring(2);
-	}
-	if (hex.length % 2 != 0) {
-		hex = "0" + hex;
-	}
-	return hex;
+    if (hex == null) {
+        return null;
+    }
+    if (hex.startsWith("0x")) {
+        hex = hex.substring(2);
+    }
+    if (hex.length % 2 != 0) {
+        hex = "0" + hex;
+    }
+    return hex;
 }
 
 var exec = require('child_process').exec;
@@ -35,79 +35,79 @@ function execute(command) {
 };
 
 function getUserHome() {
-	return process.env[(process.platform == 'win32') ? 'USERPROFILE' : 'HOME'];
+    return process.env[(process.platform == 'win32') ? 'USERPROFILE' : 'HOME'];
 }
 
 function buffer(hex) {
-	if (hex == null) {
-		return new Buffer('', 'hex');
-	} else {
-		return new Buffer(normalize(hex), 'hex');
-	}
+    if (hex == null) {
+        return new Buffer('', 'hex');
+    } else {
+        return new Buffer(normalize(hex), 'hex');
+    }
 }
 
 var trezorInstance;
 
 class Trezor {
-	constructor(path) {
-		var self = this;
+    constructor(path) {
+        var self = this;
 
-		this.accountsMap = {};
-		this.devices = [];
-		this.path = path;
-		this.list = new trezor.DeviceList({debug: debug});
-	    this.list.acquireFirstDevice().then(obj => {
-	        self.device = obj.device;
-	        self.session = obj.session;
+        this.accountsMap = {};
+        this.devices = [];
+        this.path = path;
+        this.address = null;
+        this.initialized = this.initSession();
+    }
 
-            obj.device.on('passphrase', callback => {
-                execute("java -cp " + require.resolve("./ui-0.1.0.jar") + " io.daonomic.trezor.AskPassphrase")
-                    .then(out => callback(null, out.trim()))
-                    .catch(callback);
-            });
+    initSession() {
+        var self = this;
+        return new Promise(function(resolve, reject) {
+            self.list = new trezor.DeviceList({debug: debug});
+            self.list.acquireFirstDevice().then(obj => {
+                self.device = obj.device;
+                self.session = obj.session;
 
-		    obj.device.on('pin', (type, callback) => {
-		        execute("java -cp " + require.resolve("./ui-0.1.0.jar") + " io.daonomic.trezor.AskPin")
-                    .then(out => callback(null, out.trim()))
-                    .catch(callback);
-		    });
+                obj.device.on('passphrase', callback => {
+                    execute("java -cp " + require.resolve("./ui-0.1.0.jar") + " io.daonomic.trezor.AskPassphrase")
+                        .then(out => callback(null, out.trim()))
+                        .catch(callback);
+                });
 
-            // For convenience, device emits 'disconnect' event on disconnection.
-            obj.device.on('disconnect', function () {
-                console.log("Disconnected device");
-                self.device = null;
-                self.session = null;
-            });
+                obj.device.on('pin', (type, callback) => {
+                    execute("java -cp " + require.resolve("./ui-0.1.0.jar") + " io.daonomic.trezor.AskPin")
+                        .then(out => callback(null, out.trim()))
+                        .catch(callback);
+                });
 
-	        obj.session.ethereumGetAddress(self.path, false)
-	            .then(resp => "0x" + resp.message.address)
-	            .then(address => console.log("Current address: " + address + "\n"))
-	            .catch(console.log)
-	    }).catch(console.log);
-	}
+                // For convenience, device emits 'disconnect' event on disconnection.
+                obj.device.on('disconnect', function () {
+                    console.log("Disconnected device");
+                    self.device = null;
+                    self.session = null;
+                });
 
-	checkSession() {
-		if (this.session != null) {
-			return Promise.resolve(this.session);
-		} else {
-			return Promise.reject("No session opened");
-		}
-	}
+                obj.session.ethereumGetAddress(self.path, false)
+                    .then(resp => "0x" + resp.message.address)
+                    .then(address => { self.address = address; console.log("Current address: " + address + "\n");
+                    resolve(self.session) })
+                    .catch(console.log)
+            }).catch(console.log);
+        })
+    }
 
-	getAccounts(cb) {
-		var self = this;
-		this.checkSession()
-			.then(session => session.ethereumGetAddress(self.path, false))
-			.then(resp => "0x" + resp.message.address)
-			.then(address => {cb(null, [address])})
-			.catch(cb)
-	}
+    getAccounts(cb) {
+        var self = this;
+        this.initialized
+            .then(session => self.address)
+            .then(address => cb(null, [address]))
+            .catch(cb)
+    }
 
-	signTransaction(txParams, cb) {
-		var self = this;
-		this.checkSession()
-			.then(session => session.signEthTx(self.path, normalize(txParams.nonce), normalize(txParams.gasPrice), normalize(txParams.gas), normalize(txParams.to), normalize(txParams.value), normalize(txParams.data)))
-    		.then(result => {
+    signTransaction(txParams, cb) {
+        var self = this;
+        this.initialized
+            .then(session => session.signEthTx(self.path, normalize(txParams.nonce), normalize(txParams.gasPrice), normalize(txParams.gas), normalize(txParams.to), normalize(txParams.value), normalize(txParams.data)))
+            .then(result => {
                 const tx = new Transaction({
                    nonce: buffer(txParams.nonce),
                    gasPrice: buffer(txParams.gasPrice),
@@ -120,33 +120,33 @@ class Trezor {
                    s: buffer(result.s)
                 });
                 cb(null, '0x' + tx.serialize().toString('hex'));
-    		})
-		    .catch(cb);
-	}
+            })
+            .catch(cb);
+    }
 
-	static init(path) {
-		if (trezorInstance == null) {
-			trezorInstance = new Trezor(path);
-		} else {
-			trezorInstance.path = path;
-		}
-		return trezorInstance;
-	}
+    static init(path) {
+        if (trezorInstance == null) {
+            trezorInstance = new Trezor(path);
+        } else {
+            trezorInstance.path = path;
+        }
+        return trezorInstance;
+    }
 }
 
 class TrezorProvider extends HookedWalletSubprovider {
-	constructor(path) {
-		var pathArray = bippath.fromString(path).toPathArray();
-		var trezor = Trezor.init(pathArray);
-		super({
-			getAccounts: function(cb) {
-				trezor.getAccounts(cb);
-			},
-			signTransaction: function(txParams, cb) {
-				trezor.signTransaction(txParams, cb);
-			}
-		});
-	}
+    constructor(path) {
+        var pathArray = bippath.fromString(path).toPathArray();
+        var trezor = Trezor.init(pathArray);
+        super({
+            getAccounts: function(cb) {
+                trezor.getAccounts(cb);
+            },
+            signTransaction: function(txParams, cb) {
+                trezor.signTransaction(txParams, cb);
+            }
+        });
+    }
 }
 
 module.exports = TrezorProvider;

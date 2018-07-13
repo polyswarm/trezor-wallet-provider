@@ -27,4 +27,21 @@ Parameters:
 
 ## Truffle Usage
 
-You can easily use this within a Truffle configuration
+You can use this in Truffle by modifying your config as shown:
+
+```
+var TrezorWeb3Provider = require("@daonomic/trezor-web3-provider);
+
+module.exports = {
+  networks: {
+    rinkeby: {
+      network_id: '4',
+      provider: function() { return new TrezorWeb3Provider("https://rinkeby.infura.io/[YOUR_API_KEY]", "m/44'/1'/0'/0/0") },
+    },
+    mainnet: {
+      network_id: '1',
+      provider: function() { return new TrezorWeb3Provider("https://mainnet.infura.io/[YOUR_API_KEY]", "m/44'/60'/0'/0") },
+    },
+  }
+}
+```
