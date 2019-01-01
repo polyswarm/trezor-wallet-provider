@@ -45,3 +45,6 @@ module.exports = {
   }
 }
 ```
+
+## Requirements
+Trezor bridge must be installed.
