@@ -2,7 +2,7 @@
 
 var HookedWalletSubprovider = require('web3-provider-engine/subproviders/hooked-wallet.js');
 var Transaction = require('ethereumjs-tx');
-var trezor = require('trezor.js-node');
+var trezor = require('trezor.js');
 var util = require('util');
 var bippath = require('bip32-path')
 
@@ -57,6 +57,7 @@ class Trezor {
         this.path = path;
         this.address = null;
         this.initialized = this.initSession();
+        this.nonce = -1;
     }
 
     initSession() {
@@ -104,6 +105,17 @@ class Trezor {
     }
 
     signTransaction(txParams, cb) {
+        // TODO this is a hack to try to keep better track of nonces,
+        // since Infura often gets out of sync, sometimes by multiple nonces.
+        // It should work as long as nothing else is issuing txs from the
+        // same account.
+        if (this.nonce < 1 || parseInt(txParams.nonce) > this.nonce) {
+            this.nonce = parseInt(txParams.nonce);
+        } else {
+            this.nonce += 1;
+            var hexString = this.nonce.toString(16);
+            txParams.nonce = "0x" + hexString;
+        }
         var self = this;
         this.initialized
             .then(session => session.signEthTx(self.path, normalize(txParams.nonce), normalize(txParams.gasPrice), normalize(txParams.gas), normalize(txParams.to), normalize(txParams.value), normalize(txParams.data)))
